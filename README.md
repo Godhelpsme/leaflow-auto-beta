@@ -7,7 +7,7 @@ Leaflow 自动签到控制面板是一个基于 Web 的管理界面，用于自�
 - ✅ **多账户管理**：支持添加和管理多个 Leaflow 账户
 - ⏰ **定时签到**：为每个账户设置独立的签到时间
 - 📊 **数据统计**：可视化展示签到成功率和历史记录
-- 🔔 **多平台通知**：支持 Telegram 和企业微信通知
+- 🔔 **多平台通知**：支持 Telegram、企业微信和 Discord 通知
 - 🗄️ **数据库支持**：支持 SQLite 和 MySQL 数据库
 - 🐳 **Docker 部署**：提供完整的容器化部署方案
 - 🔐 **安全认证**：基于 JWT 的安全认证机制
@@ -19,7 +19,20 @@ Leaflow 自动签到控制面板是一个基于 Web 的管理界面，用于自�
 ## 快速开始
 ### 版本更新
 
-最新版本：`ghcr.io/stsix/leaflow-auto-beta:20250927214644`
+最新版本：`ghcr.io/stsix/leaflow-auto-beta:20251206000000`
+
+#### 20251206000000更新内容
+##### 1. 通知渠道优化
+- 移除WxPusher和钉钉通知渠道
+- 新增Discord Webhook通知支持
+- 数据库表结构优化，移除相关字段
+- 前端UI更新，简化通知配置界面
+
+##### 2. Discord通知特性
+- 使用Discord Embed格式展示通知消息
+- 支持富文本格式，包含标题、内容和时间戳
+- 配置简单，只需提供Webhook URL
+
 #### 20250927214644更新内容
 ##### 1. MySQL重连机制增强
 - 实现了指数退避重试策略（3秒、6秒、12秒、24秒...）
@@ -73,7 +86,7 @@ docker run -e MAX_MYSQL_RETRIES=20 ...
 2. 修复MySQL可能出现的连接错误问题
 3. 改进签到逻辑，新增缓存策略，避免MySQL连接池耗尽
 4. 新增修改账户cookie功能
-5. 优化通知设置布局，新增支持wxpusher通知和钉钉通知
+5. 移除WxPusher和钉钉通知渠道，新增Discord Webhook通知支持
 ### Docker 部署（推荐）
 Docker镜像最新版本：`ghcr.io/stsix/leaflow-auto-beta:20250911094422`
 
@@ -200,8 +213,9 @@ python app.py
 ### 4. 配置通知
 
 在通知设置中配置：
-- **Telegram Bot Token** 和 **User ID**
-- **企业微信 Webhook Key**
+- **Telegram**: Bot Token 和 User ID
+- **企业微信**: Webhook Key
+- **Discord**: Webhook URL（从Discord服务器设置 → 集成 → Webhook中创建）
 
 ## API 接口
 

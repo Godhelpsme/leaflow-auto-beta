@@ -433,14 +433,8 @@ class Database:
                             wechat_enabled BOOLEAN DEFAULT FALSE,
                             wechat_webhook_key VARCHAR(255) DEFAULT '',
                             wechat_host VARCHAR(255) DEFAULT '',
-                            wxpusher_enabled BOOLEAN DEFAULT FALSE,
-                            wxpusher_app_token VARCHAR(255) DEFAULT '',
-                            wxpusher_uid VARCHAR(255) DEFAULT '',
-                            wxpusher_host VARCHAR(255) DEFAULT '',
-                            dingtalk_enabled BOOLEAN DEFAULT FALSE,
-                            dingtalk_access_token VARCHAR(255) DEFAULT '',
-                            dingtalk_secret VARCHAR(255) DEFAULT '',
-                            dingtalk_host VARCHAR(255) DEFAULT '',
+                            discord_enabled BOOLEAN DEFAULT FALSE,
+                            discord_webhook_url TEXT DEFAULT '',
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                         )
                     ''')
@@ -453,14 +447,8 @@ class Database:
                         ("notification_settings", "telegram_host", "VARCHAR(255) DEFAULT ''"),
                         ("notification_settings", "wechat_enabled", "BOOLEAN DEFAULT FALSE"),
                         ("notification_settings", "wechat_host", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "wxpusher_enabled", "BOOLEAN DEFAULT FALSE"),
-                        ("notification_settings", "wxpusher_app_token", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "wxpusher_uid", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "wxpusher_host", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "dingtalk_enabled", "BOOLEAN DEFAULT FALSE"),
-                        ("notification_settings", "dingtalk_access_token", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "dingtalk_secret", "VARCHAR(255) DEFAULT ''"),
-                        ("notification_settings", "dingtalk_host", "VARCHAR(255) DEFAULT ''")
+                        ("notification_settings", "discord_enabled", "BOOLEAN DEFAULT FALSE"),
+                        ("notification_settings", "discord_webhook_url", "TEXT DEFAULT ''")
                     ]
                     
                     for table_name, field_name, field_type in new_fields:
@@ -511,14 +499,8 @@ class Database:
                             wechat_enabled BOOLEAN DEFAULT 0,
                             wechat_webhook_key TEXT DEFAULT '',
                             wechat_host TEXT DEFAULT '',
-                            wxpusher_enabled BOOLEAN DEFAULT 0,
-                            wxpusher_app_token TEXT DEFAULT '',
-                            wxpusher_uid TEXT DEFAULT '',
-                            wxpusher_host TEXT DEFAULT '',
-                            dingtalk_enabled BOOLEAN DEFAULT 0,
-                            dingtalk_access_token TEXT DEFAULT '',
-                            dingtalk_secret TEXT DEFAULT '',
-                            dingtalk_host TEXT DEFAULT '',
+                            discord_enabled BOOLEAN DEFAULT 0,
+                            discord_webhook_url TEXT DEFAULT '',
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
                     ''')
@@ -712,24 +694,12 @@ class NotificationService:
                     settings.get('wechat_host', '')
                 )
             
-            # Send WxPusher notification
-            if settings.get('wxpusher_enabled') and settings.get('wxpusher_app_token') and settings.get('wxpusher_uid'):
-                NotificationService.send_wxpusher(
-                    settings['wxpusher_app_token'],
-                    settings['wxpusher_uid'],
+            # Send Discord notification
+            if settings.get('discord_enabled') and settings.get('discord_webhook_url'):
+                NotificationService.send_discord(
+                    settings['discord_webhook_url'],
                     title,
-                    content,
-                    settings.get('wxpusher_host', '')
-                )
-            
-            # Send DingTalk notification
-            if settings.get('dingtalk_enabled') and settings.get('dingtalk_access_token') and settings.get('dingtalk_secret'):
-                NotificationService.send_dingtalk(
-                    settings['dingtalk_access_token'],
-                    settings['dingtalk_secret'],
-                    title,
-                    content,
-                    settings.get('dingtalk_host', '')
+                    content
                 )
                 
         except Exception as e:
@@ -779,85 +749,33 @@ class NotificationService:
                 logger.error(f"WeChat Work notification failed: {response.get('errmsg')}")
         except Exception as e:
             logger.error(f"WeChat Work notification error: {e}")
-    
+
     @staticmethod
-    def send_wxpusher(app_token, uid, title, content, custom_host=''):
-        """Send WxPusher notification"""
+    def send_discord(webhook_url, title, content):
+        """Send Discord webhook notification"""
         try:
-            base_url = custom_host.rstrip('/') if custom_host else "https://wxpusher.zjiecode.com"
-            url = f"{base_url}/api/send/message"
-            
-            # 修复HTML模板，使其在深色模式下也能正常显示
-            html_content = f"""
-            <div style="padding: 10px; color: #2c3e50; background: #ffffff;">
-                <h2 style="color: inherit; margin: 0;">{title}</h2>
-                <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; color: #2c3e50;">
-                    <pre style="white-space: pre-wrap; word-wrap: break-word; margin: 0; color: inherit;">{content}</pre>
-                </div>
-                <div style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">
-                    发送时间: {datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')}
-                </div>
-            </div>
-            """
-            
+            headers = {"Content-Type": "application/json"}
+            # Discord embed format for rich message display
             data = {
-                "appToken": app_token,
-                "content": html_content,
-                "summary": title[:20],  # 摘要限制20字符
-                "contentType": 2,  # HTML格式
-                "uids": [uid],
-                "verifyPayType": 0
+                "embeds": [{
+                    "title": title,
+                    "description": content,
+                    "color": 5814783,  # Blue color
+                    "timestamp": datetime.now(TIMEZONE).isoformat(),
+                    "footer": {
+                        "text": "Leaflow Auto Check-in"
+                    }
+                }]
             }
-            
-            response = requests.post(url, json=data, timeout=30)
-            result = response.json()
-            
-            if result.get("code") == 1000:
-                logger.info("WxPusher notification sent successfully")
+
+            response = requests.post(webhook_url, json=data, headers=headers, timeout=30)
+
+            if response.status_code == 204:
+                logger.info("Discord notification sent successfully")
             else:
-                logger.error(f"WxPusher notification failed: {result.get('msg')}")
+                logger.error(f"Discord notification failed: {response.status_code} - {response.text}")
         except Exception as e:
-            logger.error(f"WxPusher notification error: {e}")
-    
-    @staticmethod
-    def send_dingtalk(access_token, secret, title, content, custom_host=''):
-        """Send DingTalk robot notification"""
-        try:
-            # 生成签名
-            timestamp = str(round(time.time() * 1000))
-            string_to_sign = f'{timestamp}\n{secret}'
-            hmac_code = hmac.new(
-                secret.encode('utf-8'), 
-                string_to_sign.encode('utf-8'), 
-                digestmod=hashlib.sha256
-            ).digest()
-            sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-            
-            # 构建URL
-            base_url = custom_host.rstrip('/') if custom_host else "https://oapi.dingtalk.com"
-            url = f'{base_url}/robot/send?access_token={access_token}&timestamp={timestamp}&sign={sign}'
-            
-            # 构建消息体
-            data = {
-                "msgtype": "text",
-                "text": {
-                    "content": f"【{title}】\n{content}"
-                },
-                "at": {
-                    "isAtAll": False
-                }
-            }
-            
-            headers = {'Content-Type': 'application/json'}
-            response = requests.post(url, json=data, headers=headers, timeout=30)
-            result = response.json()
-            
-            if result.get("errcode") == 0:
-                logger.info("DingTalk notification sent successfully")
-            else:
-                logger.error(f"DingTalk notification failed: {result.get('errmsg')}")
-        except Exception as e:
-            logger.error(f"DingTalk notification error: {e}")
+            logger.error(f"Discord notification error: {e}")
 
 # Leaflow check-in class
 class LeafLowCheckin:
@@ -1588,20 +1506,19 @@ def get_notification_settings():
         settings = db.fetchone('SELECT * FROM notification_settings WHERE id = 1')
         if settings:
             # 转换布尔值
-            for key in ['enabled', 'telegram_enabled', 'wechat_enabled', 'wxpusher_enabled', 'dingtalk_enabled']:
+            for key in ['enabled', 'telegram_enabled', 'wechat_enabled', 'discord_enabled']:
                 if key in settings:
                     settings[key] = bool(settings.get(key, 0))
-            
+
             # 确保字符串字段不为None
             string_fields = [
                 'telegram_bot_token', 'telegram_user_id', 'telegram_host',
                 'wechat_webhook_key', 'wechat_host',
-                'wxpusher_app_token', 'wxpusher_uid', 'wxpusher_host',
-                'dingtalk_access_token', 'dingtalk_secret', 'dingtalk_host'
+                'discord_webhook_url'
             ]
             for field in string_fields:
                 settings[field] = settings.get(field, '') or ''
-            
+
             logger.info(f"Loaded notification settings: {settings}")
             return jsonify(settings)
         else:
@@ -1615,14 +1532,8 @@ def get_notification_settings():
                 'wechat_enabled': False,
                 'wechat_webhook_key': '',
                 'wechat_host': '',
-                'wxpusher_enabled': False,
-                'wxpusher_app_token': '',
-                'wxpusher_uid': '',
-                'wxpusher_host': '',
-                'dingtalk_enabled': False,
-                'dingtalk_access_token': '',
-                'dingtalk_secret': '',
-                'dingtalk_host': ''
+                'discord_enabled': False,
+                'discord_webhook_url': ''
             }
             return jsonify(default_settings)
     except Exception as e:
@@ -1646,47 +1557,37 @@ def update_notification_settings():
         wechat_enabled = 1 if data.get('wechat_enabled', False) else 0
         wechat_webhook_key = data.get('wechat_webhook_key', '') or ''
         wechat_host = data.get('wechat_host', '') or ''
-        wxpusher_enabled = 1 if data.get('wxpusher_enabled', False) else 0
-        wxpusher_app_token = data.get('wxpusher_app_token', '') or ''
-        wxpusher_uid = data.get('wxpusher_uid', '') or ''
-        wxpusher_host = data.get('wxpusher_host', '') or ''
-        dingtalk_enabled = 1 if data.get('dingtalk_enabled', False) else 0
-        dingtalk_access_token = data.get('dingtalk_access_token', '') or ''
-        dingtalk_secret = data.get('dingtalk_secret', '') or ''
-        dingtalk_host = data.get('dingtalk_host', '') or ''
-        
+        discord_enabled = 1 if data.get('discord_enabled', False) else 0
+        discord_webhook_url = data.get('discord_webhook_url', '') or ''
+
         existing = db.fetchone('SELECT id FROM notification_settings WHERE id = 1')
-        
+
         if existing:
             db.execute('''
                 UPDATE notification_settings
                 SET enabled = ?, telegram_enabled = ?, telegram_bot_token = ?, telegram_user_id = ?, telegram_host = ?,
                     wechat_enabled = ?, wechat_webhook_key = ?, wechat_host = ?,
-                    wxpusher_enabled = ?, wxpusher_app_token = ?, wxpusher_uid = ?, wxpusher_host = ?,
-                    dingtalk_enabled = ?, dingtalk_access_token = ?, dingtalk_secret = ?, dingtalk_host = ?,
+                    discord_enabled = ?, discord_webhook_url = ?,
                     updated_at = ?
                 WHERE id = 1
             ''', (
                 enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                 wechat_enabled, wechat_webhook_key, wechat_host,
-                wxpusher_enabled, wxpusher_app_token, wxpusher_uid, wxpusher_host,
-                dingtalk_enabled, dingtalk_access_token, dingtalk_secret, dingtalk_host,
+                discord_enabled, discord_webhook_url,
                 datetime.now()
             ))
             logger.info("Notification settings updated successfully")
         else:
             db.execute('''
-                INSERT INTO notification_settings 
+                INSERT INTO notification_settings
                 (id, enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                  wechat_enabled, wechat_webhook_key, wechat_host,
-                 wxpusher_enabled, wxpusher_app_token, wxpusher_uid, wxpusher_host,
-                 dingtalk_enabled, dingtalk_access_token, dingtalk_secret, dingtalk_host)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 discord_enabled, discord_webhook_url)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                 wechat_enabled, wechat_webhook_key, wechat_host,
-                wxpusher_enabled, wxpusher_app_token, wxpusher_uid, wxpusher_host,
-                dingtalk_enabled, dingtalk_access_token, dingtalk_secret, dingtalk_host
+                discord_enabled, discord_webhook_url
             ))
             logger.info("Notification settings created successfully")
         
@@ -2407,61 +2308,25 @@ HTML_TEMPLATE = '''
                         <div class="format-hint">留空使用默认地址</div>
                     </div>
                 </div>
-                
-                <!-- WxPusher通知设置 -->
+
+                <!-- Discord通知设置 -->
                 <div class="notification-channel">
-                    <h4>📨 WxPusher 消息通知设置</h4>
+                    <h4>💬 Discord Webhook 通知设置</h4>
                     <div class="channel-toggle">
-                        <input type="checkbox" id="wxpusherEnabled">
-                        <label for="wxpusherEnabled">启用 WxPusher 通知</label>
+                        <input type="checkbox" id="discordEnabled">
+                        <label for="discordEnabled">启用 Discord 通知</label>
                     </div>
                     <div class="form-group">
-                        <label>APP Token</label>
-                        <input type="text" id="wxpusherAppToken" placeholder="AT_xxx">
+                        <label>Webhook URL</label>
+                        <input type="text" id="discordWebhookUrl" placeholder="https://discord.com/api/webhooks/...">
                         <div class="format-hint">
-                            <a href="https://wxpusher.zjiecode.com/docs/#/" target="_blank" class="help-link">
-                                访问 WxPusher 文档获取 Token 和 UID
+                            <a href="https://support.discord.com/hc/zh-tw/articles/228383668" target="_blank" class="help-link">
+                                如何创建 Discord Webhook
                             </a>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>UID</label>
-                        <input type="text" id="wxpusherUid" placeholder="UID_xxx">
-                    </div>
-                    <div class="form-group">
-                        <label>API地址（可选）</label>
-                        <input type="text" id="wxpusherHost" placeholder="https://wxpusher.zjiecode.com">
-                        <div class="format-hint">留空使用默认地址</div>
-                    </div>
                 </div>
-                
-                <!-- 钉钉机器人通知设置 -->
-                <div class="notification-channel">
-                    <h4>🤖 钉钉机器人通知设置</h4>
-                    <div class="channel-toggle">
-                        <input type="checkbox" id="dingtalkEnabled">
-                        <label for="dingtalkEnabled">启用钉钉机器人通知</label>
-                    </div>
-                    <div class="form-group">
-                        <label>Access Token</label>
-                        <input type="text" id="dingtalkAccessToken" placeholder="机器人的 Access Token">
-                        <div class="format-hint">
-                            <a href="https://open.dingtalk.com/document/orgapp/obtain-the-webhook-address-of-a-custom-robot" target="_blank" class="help-link">
-                                获取钉钉机器人配置
-                            </a>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>加签密钥</label>
-                        <input type="text" id="dingtalkSecret" placeholder="安全设置中的加签密钥">
-                    </div>
-                    <div class="form-group">
-                        <label>API地址（可选）</label>
-                        <input type="text" id="dingtalkHost" placeholder="https://oapi.dingtalk.com">
-                        <div class="format-hint">留空使用默认地址</div>
-                    </div>
-                </div>
-                
+
                 <button class="btn" onclick="saveNotificationSettings()">保存通知设置</button>
             </div>
         </div>
@@ -2810,18 +2675,10 @@ HTML_TEMPLATE = '''
                 document.getElementById('wechatEnabled').checked = settings.wechat_enabled === true || settings.wechat_enabled === 1;
                 document.getElementById('wechatKey').value = settings.wechat_webhook_key || '';
                 document.getElementById('wechatHost').value = settings.wechat_host || '';
-                
-                // WxPusher设置
-                document.getElementById('wxpusherEnabled').checked = settings.wxpusher_enabled === true || settings.wxpusher_enabled === 1;
-                document.getElementById('wxpusherAppToken').value = settings.wxpusher_app_token || '';
-                document.getElementById('wxpusherUid').value = settings.wxpusher_uid || '';
-                document.getElementById('wxpusherHost').value = settings.wxpusher_host || '';
-                
-                // 钉钉设置
-                document.getElementById('dingtalkEnabled').checked = settings.dingtalk_enabled === true || settings.dingtalk_enabled === 1;
-                document.getElementById('dingtalkAccessToken').value = settings.dingtalk_access_token || '';
-                document.getElementById('dingtalkSecret').value = settings.dingtalk_secret || '';
-                document.getElementById('dingtalkHost').value = settings.dingtalk_host || '';
+
+                // Discord设置
+                document.getElementById('discordEnabled').checked = settings.discord_enabled === true || settings.discord_enabled === 1;
+                document.getElementById('discordWebhookUrl').value = settings.discord_webhook_url || '';
             } catch (error) {
                 console.error('Failed to load notification settings:', error);
             }
@@ -2930,14 +2787,8 @@ HTML_TEMPLATE = '''
                     wechat_enabled: document.getElementById('wechatEnabled').checked,
                     wechat_webhook_key: document.getElementById('wechatKey').value,
                     wechat_host: document.getElementById('wechatHost').value,
-                    wxpusher_enabled: document.getElementById('wxpusherEnabled').checked,
-                    wxpusher_app_token: document.getElementById('wxpusherAppToken').value,
-                    wxpusher_uid: document.getElementById('wxpusherUid').value,
-                    wxpusher_host: document.getElementById('wxpusherHost').value,
-                    dingtalk_enabled: document.getElementById('dingtalkEnabled').checked,
-                    dingtalk_access_token: document.getElementById('dingtalkAccessToken').value,
-                    dingtalk_secret: document.getElementById('dingtalkSecret').value,
-                    dingtalk_host: document.getElementById('dingtalkHost').value
+                    discord_enabled: document.getElementById('discordEnabled').checked,
+                    discord_webhook_url: document.getElementById('discordWebhookUrl').value
                 };
 
                 await apiCall('/api/notification', {
@@ -2945,7 +2796,7 @@ HTML_TEMPLATE = '''
                     body: JSON.stringify(settings)
                 });
                 showToast('设置保存成功', 'success');
-                
+
                 setTimeout(loadNotificationSettings, 500);
             } catch (error) {
                 showToast('操作失败: ' + error.message, 'error');
