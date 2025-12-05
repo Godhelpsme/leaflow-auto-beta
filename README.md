@@ -19,7 +19,7 @@ Leaflow 自动签到控制面板是一个基于 Web 的管理界面，用于自�
 ## 快速开始
 ### 版本更新
 
-最新版本：`ghcr.io/stsix/leaflow-auto-beta:20251206000000`
+最新版本：`ghcr.io/godhelpsme/leaflow-auto-beta:latest`
 
 #### 20251206000000更新内容
 ##### 1. 通知渠道优化
@@ -88,11 +88,11 @@ docker run -e MAX_MYSQL_RETRIES=20 ...
 4. 新增修改账户cookie功能
 5. 移除WxPusher和钉钉通知渠道，新增Discord Webhook通知支持
 ### Docker 部署（推荐）
-Docker镜像最新版本：`ghcr.io/stsix/leaflow-auto-beta:20250911094422`
+Docker镜像最新版本：`ghcr.io/godhelpsme/leaflow-auto-beta:latest`
 
 ```bash
 # 拉取最新镜像
-docker pull ghcr.io/stsix/leaflow-auto-beta:latest
+docker pull ghcr.io/godhelpsme/leaflow-auto-beta:latest
 
 # 运行容器
 docker run -d \
@@ -101,7 +101,7 @@ docker run -d \
   -e ADMIN_USERNAME=admin \
   -e ADMIN_PASSWORD=your_secure_password \
   -v /path/to/data:/app/data \
-  ghcr.io/stsix/leaflow-auto-beta:latest
+  ghcr.io/godhelpsme/leaflow-auto-beta:latest
 ```
 ### leaflow部署
 访问[部署清单](https://leaflow.net/apply)，复制下面内容并修改环境变量等配置，粘贴到输入 YAML 配置文本框内，然后点击下方 应用/更新 按钮即可自动部署，部署后自行到服务管理内创建服务并设置外网访问
@@ -113,7 +113,7 @@ image_pull_secrets: []
 labels: {}
 containers:
   - name: leaflow-auto
-    image: ghcr.io/stsix/leaflow-auto-beta
+    image: ghcr.io/godhelpsme/leaflow-auto-beta
     working_dir: ''
     command: []
     args: []
@@ -161,7 +161,7 @@ MySQL DSN 格式：`mysql://username:password@host:port/dbname`
 
 1. 克隆项目
 ```bash
-git clone https://github.com/stsix/leaflow-auto-beta.git
+git clone https://github.com/Godhelpsme/leaflow-auto-beta.git
 cd leaflow-auto-beta
 ```
 
