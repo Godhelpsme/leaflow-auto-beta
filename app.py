@@ -434,7 +434,7 @@ class Database:
                             wechat_webhook_key VARCHAR(255) DEFAULT '',
                             wechat_host VARCHAR(255) DEFAULT '',
                             discord_enabled BOOLEAN DEFAULT FALSE,
-                            discord_webhook_url TEXT DEFAULT '',
+                            discord_webhook_url TEXT,
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                         )
                     ''')
@@ -448,7 +448,7 @@ class Database:
                         ("notification_settings", "wechat_enabled", "BOOLEAN DEFAULT FALSE"),
                         ("notification_settings", "wechat_host", "VARCHAR(255) DEFAULT ''"),
                         ("notification_settings", "discord_enabled", "BOOLEAN DEFAULT FALSE"),
-                        ("notification_settings", "discord_webhook_url", "TEXT DEFAULT ''")
+                        ("notification_settings", "discord_webhook_url", "TEXT")
                     ]
                     
                     for table_name, field_name, field_type in new_fields:
