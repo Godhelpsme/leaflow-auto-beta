@@ -448,7 +448,10 @@ class Database:
                         ("notification_settings", "wechat_enabled", "BOOLEAN DEFAULT FALSE"),
                         ("notification_settings", "wechat_host", "VARCHAR(255) DEFAULT ''"),
                         ("notification_settings", "discord_enabled", "BOOLEAN DEFAULT FALSE"),
-                        ("notification_settings", "discord_webhook_url", "TEXT")
+                        ("notification_settings", "discord_webhook_url", "TEXT"),
+                        ("notification_settings", "discord_proxy_enabled", "BOOLEAN DEFAULT FALSE"),
+                        ("notification_settings", "discord_proxy_url", "TEXT"),
+                        ("notification_settings", "discord_auth_token", "VARCHAR(255) DEFAULT ''")
                     ]
                     
                     for table_name, field_name, field_type in new_fields:
@@ -699,7 +702,10 @@ class NotificationService:
                 NotificationService.send_discord(
                     settings['discord_webhook_url'],
                     title,
-                    content
+                    content,
+                    proxy_enabled=settings.get('discord_proxy_enabled', False),
+                    proxy_url=settings.get('discord_proxy_url', ''),
+                    auth_token=settings.get('discord_auth_token', '')
                 )
                 
         except Exception as e:
@@ -751,9 +757,11 @@ class NotificationService:
             logger.error(f"WeChat Work notification error: {e}")
 
     @staticmethod
-    def send_discord(webhook_url, title, content):
+    def send_discord(webhook_url, title, content, proxy_enabled=False, proxy_url='', auth_token=''):
         """Send Discord webhook notification"""
         try:
+            import re
+
             headers = {"Content-Type": "application/json"}
             # Discord embed format for rich message display
             data = {
@@ -768,7 +776,30 @@ class NotificationService:
                 }]
             }
 
-            response = requests.post(webhook_url, json=data, headers=headers, timeout=30)
+            # 确定最终请求URL和headers
+            final_url = webhook_url
+
+            # 如果启用代理且配置完整,使用代理模式
+            if proxy_enabled and proxy_url and auth_token:
+                # 从 webhook_url 提取 ID 和 TOKEN
+                # Discord webhook URL 格式: https://discord.com/api/webhooks/{ID}/{TOKEN}
+                match = re.search(r'/webhooks/(\d+)/([a-zA-Z0-9_-]+)', webhook_url)
+                if match:
+                    webhook_id = match.group(1)
+                    webhook_token = match.group(2)
+                    # 构造代理URL
+                    # 移除 proxy_url 末尾的斜杠(如果有)
+                    proxy_base = proxy_url.rstrip('/')
+                    final_url = f"{proxy_base}/webhooks/{webhook_id}/{webhook_token}"
+                    # 添加认证header
+                    headers["Authorization"] = f"Bearer {auth_token}"
+                    logger.info(f"Using Discord proxy mode: {proxy_base}")
+                else:
+                    logger.warning("Failed to extract webhook ID/TOKEN, falling back to direct mode")
+            else:
+                logger.info("Using Discord direct mode")
+
+            response = requests.post(final_url, json=data, headers=headers, timeout=30)
 
             if response.status_code == 204:
                 logger.info("Discord notification sent successfully")
@@ -1506,7 +1537,7 @@ def get_notification_settings():
         settings = db.fetchone('SELECT * FROM notification_settings WHERE id = 1')
         if settings:
             # 转换布尔值
-            for key in ['enabled', 'telegram_enabled', 'wechat_enabled', 'discord_enabled']:
+            for key in ['enabled', 'telegram_enabled', 'wechat_enabled', 'discord_enabled', 'discord_proxy_enabled']:
                 if key in settings:
                     settings[key] = bool(settings.get(key, 0))
 
@@ -1514,7 +1545,7 @@ def get_notification_settings():
             string_fields = [
                 'telegram_bot_token', 'telegram_user_id', 'telegram_host',
                 'wechat_webhook_key', 'wechat_host',
-                'discord_webhook_url'
+                'discord_webhook_url', 'discord_proxy_url', 'discord_auth_token'
             ]
             for field in string_fields:
                 settings[field] = settings.get(field, '') or ''
@@ -1533,7 +1564,10 @@ def get_notification_settings():
                 'wechat_webhook_key': '',
                 'wechat_host': '',
                 'discord_enabled': False,
-                'discord_webhook_url': ''
+                'discord_webhook_url': '',
+                'discord_proxy_enabled': False,
+                'discord_proxy_url': '',
+                'discord_auth_token': ''
             }
             return jsonify(default_settings)
     except Exception as e:
@@ -1559,6 +1593,9 @@ def update_notification_settings():
         wechat_host = data.get('wechat_host', '') or ''
         discord_enabled = 1 if data.get('discord_enabled', False) else 0
         discord_webhook_url = data.get('discord_webhook_url', '') or ''
+        discord_proxy_enabled = 1 if data.get('discord_proxy_enabled', False) else 0
+        discord_proxy_url = data.get('discord_proxy_url', '') or ''
+        discord_auth_token = data.get('discord_auth_token', '') or ''
 
         existing = db.fetchone('SELECT id FROM notification_settings WHERE id = 1')
 
@@ -1568,12 +1605,14 @@ def update_notification_settings():
                 SET enabled = ?, telegram_enabled = ?, telegram_bot_token = ?, telegram_user_id = ?, telegram_host = ?,
                     wechat_enabled = ?, wechat_webhook_key = ?, wechat_host = ?,
                     discord_enabled = ?, discord_webhook_url = ?,
+                    discord_proxy_enabled = ?, discord_proxy_url = ?, discord_auth_token = ?,
                     updated_at = ?
                 WHERE id = 1
             ''', (
                 enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                 wechat_enabled, wechat_webhook_key, wechat_host,
                 discord_enabled, discord_webhook_url,
+                discord_proxy_enabled, discord_proxy_url, discord_auth_token,
                 datetime.now()
             ))
             logger.info("Notification settings updated successfully")
@@ -1582,12 +1621,14 @@ def update_notification_settings():
                 INSERT INTO notification_settings
                 (id, enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                  wechat_enabled, wechat_webhook_key, wechat_host,
-                 discord_enabled, discord_webhook_url)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 discord_enabled, discord_webhook_url,
+                 discord_proxy_enabled, discord_proxy_url, discord_auth_token)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 enabled, telegram_enabled, telegram_bot_token, telegram_user_id, telegram_host,
                 wechat_enabled, wechat_webhook_key, wechat_host,
-                discord_enabled, discord_webhook_url
+                discord_enabled, discord_webhook_url,
+                discord_proxy_enabled, discord_proxy_url, discord_auth_token
             ))
             logger.info("Notification settings created successfully")
         
@@ -2325,6 +2366,25 @@ HTML_TEMPLATE = '''
                             </a>
                         </div>
                     </div>
+
+                    <!-- 代理设置 -->
+                    <div class="channel-toggle" style="margin-top: 15px;">
+                        <input type="checkbox" id="discordProxyEnabled" onchange="toggleDiscordProxy(this.checked)">
+                        <label for="discordProxyEnabled">启用代理转发</label>
+                    </div>
+
+                    <div id="discordProxySettings" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0;">
+                        <div class="form-group">
+                            <label>代理服务器 URL</label>
+                            <input type="text" id="discordProxyUrl" placeholder="https://your-worker.workers.dev">
+                            <div class="format-hint">代理服务器的基础 URL (如 Cloudflare Workers)</div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>认证令牌</label>
+                            <input type="text" id="discordAuthToken" placeholder="your-auth-token">
+                            <div class="format-hint">代理服务器的认证令牌 (Bearer Token)</div>
+                        </div>
+                    </div>
                 </div>
 
                 <button class="btn" onclick="saveNotificationSettings()">保存通知设置</button>
@@ -2657,6 +2717,14 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // 切换 Discord 代理设置显示状态
+        function toggleDiscordProxy(enabled) {
+            const settingsDiv = document.getElementById('discordProxySettings');
+            if (settingsDiv) {
+                settingsDiv.style.display = enabled ? 'block' : 'none';
+            }
+        }
+
         async function loadNotificationSettings() {
             try {
                 const settings = await apiCall('/api/notification');
@@ -2679,6 +2747,15 @@ HTML_TEMPLATE = '''
                 // Discord设置
                 document.getElementById('discordEnabled').checked = settings.discord_enabled === true || settings.discord_enabled === 1;
                 document.getElementById('discordWebhookUrl').value = settings.discord_webhook_url || '';
+
+                // Discord代理设置
+                const proxyEnabled = settings.discord_proxy_enabled === true || settings.discord_proxy_enabled === 1;
+                document.getElementById('discordProxyEnabled').checked = proxyEnabled;
+                document.getElementById('discordProxyUrl').value = settings.discord_proxy_url || '';
+                document.getElementById('discordAuthToken').value = settings.discord_auth_token || '';
+
+                // 初始化代理设置区域的显示状态
+                toggleDiscordProxy(proxyEnabled);
             } catch (error) {
                 console.error('Failed to load notification settings:', error);
             }
@@ -2788,7 +2865,10 @@ HTML_TEMPLATE = '''
                     wechat_webhook_key: document.getElementById('wechatKey').value,
                     wechat_host: document.getElementById('wechatHost').value,
                     discord_enabled: document.getElementById('discordEnabled').checked,
-                    discord_webhook_url: document.getElementById('discordWebhookUrl').value
+                    discord_webhook_url: document.getElementById('discordWebhookUrl').value,
+                    discord_proxy_enabled: document.getElementById('discordProxyEnabled').checked,
+                    discord_proxy_url: document.getElementById('discordProxyUrl').value,
+                    discord_auth_token: document.getElementById('discordAuthToken').value
                 };
 
                 await apiCall('/api/notification', {
